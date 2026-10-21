@@ -1,0 +1,256 @@
+
+---
+title: "Análisis estadístico del ancho del fruto de piña"
+subtitle: "Ananas comosus L. Merr. - Variedad Golden MD-2"
+author: "Trabajo individual - Programación y Análisis de Datos"
+format:
+  html:
+    toc: true
+    toc-location: left
+    theme: cosmo
+    code-fold: true
+    code-summary: "Ver código de R"
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+# Introducción
+
+Este trabajo presenta el análisis estadístico del ancho
+del fruto de piña (*Ananas comosus* L. Merr.), utilizando
+datos de la investigación de Chacón Huamaní (2019).
+
+Se evalúan siete tratamientos de fertilización con
+boro y potasio, distribuidos en cuatro bloques.
+
+# Base de datos
+
+La base organizada comprende 28 observaciones,
+correspondientes a siete tratamientos y cuatro bloques.
+
+```{r}
+library(ggplot2)
+library(agricolae)
+library(knitr)
+
+datos <- read.csv("datos_anova_ancho.csv")
+
+datos$tratamiento <- factor(
+  datos$tratamiento,
+  levels = paste0("T", 1:7)
+)
+
+datos$bloque <- factor(datos$bloque)
+
+stopifnot(nrow(datos) == 28)
+
+kable(
+  datos[, c("tratamiento", "bloque", "promedio")],
+  col.names = c("Tratamiento", "Bloque", "Ancho promedio"),
+  digits = 4,
+  caption = "Datos organizados para el análisis"
+)
+```
+
+# 1. Modelo estadístico
+
+Se emplea un modelo de Diseño de Bloques Completos
+al Azar (DBCA), bajo la estructura experimental
+considerada para el análisis.
+
+$$
+Y_{ij} = \mu + T_i + B_j + \varepsilon_{ij}
+$$
+
+Donde:
+
+- \(Y_{ij}\): ancho promedio del fruto.
+- \(\mu\): media general.
+- \(T_i\): efecto del tratamiento.
+- \(B_j\): efecto del bloque.
+- \(\varepsilon_{ij}\): error experimental.
+
+# 2. Análisis de varianza (ANOVA)
+
+```{r}
+modelo <- aov(
+  promedio ~ tratamiento + bloque,
+  data = datos
+)
+
+tabla <- as.data.frame(anova(modelo))
+
+tabla$Fuente <- rownames(tabla)
+
+tabla <- tabla[, c(
+  "Fuente", "Df", "Sum Sq",
+  "Mean Sq", "F value", "Pr(>F)"
+)]
+
+names(tabla) <- c(
+  "Fuente", "gl", "SC", "CM", "F", "Valor p"
+)
+
+kable(
+  tabla,
+  digits = 4,
+  caption = "Análisis de varianza del ancho del fruto"
+)
+```
+
+## Interpretación del ANOVA
+
+El análisis de varianza mostró diferencias
+estadísticamente significativas entre los tratamientos
+(p = 0.0240), considerando un nivel de significancia
+del 5 %.
+
+También se identificaron diferencias significativas
+entre bloques (p = 0.0342).
+
+# 3. Comparación de medias de Tukey
+
+Se aplicó la prueba de Tukey al 5 % para identificar
+diferencias entre las medias de los tratamientos.
+
+```{r}
+tukey <- HSD.test(
+  modelo,
+  "tratamiento",
+  group = TRUE
+)
+
+grupos <- tukey$groups
+
+grupos$Tratamiento <- rownames(grupos)
+
+grupos <- grupos[, c(
+  "Tratamiento", "promedio", "groups"
+)]
+
+names(grupos) <- c(
+  "Tratamiento", "Media", "Grupo"
+)
+
+kable(
+  grupos,
+  digits = 4,
+  caption = "Comparación de medias de Tukey al 5 %"
+)
+```
+
+## Interpretación de Tukey
+
+El tratamiento T5 presentó el mayor ancho promedio
+del fruto (13.9625), mientras que T2 presentó el
+menor promedio (12.94375).
+
+Según la prueba de Tukey, T5 y T2 mostraron una
+diferencia estadísticamente significativa.
+
+Los demás tratamientos compartieron letras de
+agrupación con ambos tratamientos.
+
+# 4. Gráfico de resultados
+
+```{r}
+grafico_datos <- data.frame(
+  tratamiento = rownames(tukey$groups),
+  media = tukey$groups$promedio,
+  grupo = tukey$groups$groups
+)
+
+grafico_datos$tratamiento <- factor(
+  grafico_datos$tratamiento,
+  levels = paste0("T", 1:7)
+)
+
+ggplot(
+  grafico_datos,
+  aes(x = tratamiento, y = media)
+) +
+  geom_col(
+    fill = "#3B82B8",
+    width = 0.65
+  ) +
+  geom_text(
+    aes(label = grupo),
+    vjust = -0.7,
+    size = 5
+  ) +
+  coord_cartesian(
+    ylim = c(0, max(grafico_datos$media) * 1.12)
+  ) +
+  labs(
+    title = "Efecto de los tratamientos sobre el ancho del fruto",
+    subtitle = "Comparación de medias de Tukey (5 %)",
+    x = "Tratamientos",
+    y = "Ancho promedio del fruto"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+**Nota:** Las medias que comparten al menos una letra
+no presentan diferencias significativas según Tukey
+al 5 %.
+
+# 5. Verificación de supuestos
+
+```{r}
+normalidad <- shapiro.test(residuals(modelo))
+
+homogeneidad <- fligner.test(
+  promedio ~ tratamiento,
+  data = datos
+)
+
+supuestos <- data.frame(
+  Prueba = c("Shapiro-Wilk", "Fligner-Killeen"),
+  Valor_p = c(
+    normalidad$p.value,
+    homogeneidad$p.value
+  )
+)
+
+kable(
+  supuestos,
+  digits = 4,
+  caption = "Pruebas de diagnóstico estadístico"
+)
+```
+
+La prueba de Shapiro-Wilk obtuvo un valor
+p de 0.9884. Por ello, no se rechazó la
+hipótesis de normalidad de los residuos.
+
+La prueba de Fligner-Killeen obtuvo un valor
+p de 0.2818, por lo que no se detectó
+evidencia significativa de heterogeneidad
+de varianzas entre tratamientos.
+
+# 6. Conclusiones
+
+El análisis de varianza identificó diferencias
+estadísticamente significativas entre los
+tratamientos evaluados para el ancho del fruto.
+
+El tratamiento T5 presentó el mayor promedio,
+mientras que T2 obtuvo el menor.
+
+La comparación de Tukey identificó una diferencia
+estadísticamente significativa entre T5 y T2.
+
+Los resultados corresponden al modelo estadístico
+aplicado y deben interpretarse considerando el
+diseño experimental original y la independencia
+de las unidades experimentales.
+
+# Referencia
+
+Chacón Huamaní, D. (2019). Investigación sobre
+boro y potasio en postinducción de
+*Ananas comosus* L. Merr. variedad Golden MD-2.
+```
